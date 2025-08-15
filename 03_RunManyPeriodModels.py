@@ -10,7 +10,7 @@ import statsmodels.api as sm
 
 ### OPTIONS ###
 
-version = "22"
+version = "26"
 # This dictionary maps normalisation groups (neutral market behaviour) to active groups.
 # Norm groups:
 # If this is a string, we subtract some amount of the average fractional change in this
@@ -46,7 +46,7 @@ plots_on = True
 require_time_start = pd.to_datetime('2011-01-01')
 # Do we want to include a period some days before/after the dictionary of events?
 # You will need padding for 1-day events (e.g. OPEC meetings, IPCC reports, OilSpills)
-padafter = 1
+padafter = 0
 padbefore = 0
 # If this variable is not empty/False, we switch to studing a different time series.
 # Options include None = COPs, "OilSpill", "OPEC",

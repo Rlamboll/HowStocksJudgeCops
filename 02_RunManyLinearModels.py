@@ -7,7 +7,7 @@ import statsmodels.api as sm
 import pyfixest.estimation
 
 ### OPTIONS ###
-version = "23"
+version = "26"
 # Use to get a company-year linear trend, set to false for a company trend and a yearly
 # trend across all companies.
 year_company_data = True
@@ -31,22 +31,22 @@ normgroups_and_filetypes_dict = {
         "renewable_20", "fossil_20",
         "greencred_20"
     ],
-    "SandP": [
-        "SandP_32", "SandPESG_32",
-        "renewable_all", "fossil_32", "greencred_32",
-        "renewable_20", "fossil_20", "greencred_20"
-    ],
+    #"SandP": [
+    #    "SandP_32", "SandPESG_32",
+    #    "renewable_all", "fossil_32", "greencred_32",
+    #    "renewable_20", "fossil_20", "greencred_20"
+    #],
 }
-# If this variable is not empty/False, we switch to studing a different time series.
+# If this variable is not empty/False, we switch to studying a different time series.
 # Options include None = COPs,
 # "OilSpill", "OPEC_Conference", "OPEC_conf_29" (only 29 equally spaced OPEC meetings so stats are
 # easier), "IPCC"
-copOrOther = "OPEC_conf_29"
+copOrOther = ""
 
 # Do we want to only include companies that have data before this date:
 require_time_start = pd.to_datetime('2011-01-01')
 # Do we want to include a period some days before/after the dictionary of events?
-# You will need padding for 1-day events (e.g. OPEC meetings, IPCC reports, OilSpills)
+# You may need padding for 1-day events (e.g. OPEC meetings, IPCC reports, OilSpills)
 padafter = 0
 padbefore = 0
 # Do we want to remove data from days with stock splits and low volume?
@@ -87,13 +87,22 @@ def usepyfixest(all_data_inc_inflation, norm_group, inflation_var, copyear_on):
         f"target ~ COP{addstring}|company^Year",
         all_data_inc_inflation
     )
+    ls_pf_crv1 = pyfixest.estimation.feols(
+        f"target ~ COP{addstring}|company^Year",
+        all_data_inc_inflation,
+        vcov={"CRV1": "company"}
+    )
 
     return pd.DataFrame({
         "Coefficient": ls_pf.coef(),
         "Std. Error": ls_pf.se(),
         "t-value": ls_pf.tstat(),
         "P-value": ls_pf.pvalue(),
-        "n": ls_pf._N
+        "n": ls_pf._N,
+        "Coefficient_crv1": ls_pf_crv1.coef(),
+        "Std. Error_crv1": ls_pf_crv1.se(),
+        "t-value_crv1": ls_pf_crv1.tstat(),
+        "P-value_crv1": ls_pf_crv1.pvalue(),
     })
 
 # Start the actual loops over possible inputs
@@ -366,6 +375,29 @@ for norm_group, filetypes in normgroups_and_filetypes_dict.items():
 
                 results_df.to_csv(output + f"/FEOLSdataSummary{target}{yearnormstring}.csv")
 
+                # Also calculate descriptive stats
+                means = all_data_inc_inflation["target"].mean()
+                sds = all_data_inc_inflation["target"].std()
+                counts = int(len(all_data_inc_inflation["target"]))
+                copcounts = int(sum(all_data_inc_inflation["COP"]==1))
+                timecounts = len(all_data_inc_inflation.Date.unique())
+                copmean = all_data_inc_inflation.loc[
+                    all_data_inc_inflation["COP"] == 1, "target"].mean()
+                copstd = all_data_inc_inflation.loc[
+                    all_data_inc_inflation["COP"] == 1, "target"].std()
+                background_results_df = pd.DataFrame({
+                    "Group": [filetype],
+                    "Variable": [target],
+                    "Normalisation": [yearnormstring],
+                    "Mean": [means],
+                    "Standard deviation": [sds],
+                    "Datapoints": [counts],
+                    "COP datapoints": [copcounts],
+                    "COP mean": [copmean],
+                    "COP std": [copstd],
+                    "Times": [timecounts],
+                })
+
                 # Now do the same for daily variability
                 if not norm_group:
                     target = "DayVar"
@@ -423,8 +455,36 @@ for norm_group, filetypes in normgroups_and_filetypes_dict.items():
                 all_data_inc_inflation.loc[all_data_inc_inflation.COP.isna(), "COP"] = 0
 
                 # Write the results in a convenient fashion with high precision
-                results_df = usepyfixest(all_data_inc_inflation, norm_group, inflation_var, include_copyear_col)
+                results_df = usepyfixest(
+                    all_data_inc_inflation, norm_group, inflation_var, include_copyear_col
+                )
                 results_df.to_csv(output + f"/FEOLSdataSummary{target}{yearnormstring}.csv")
 
-        print(f'Finished {filetype}')
+                # Calculate descriptive stats again
+                means = all_data_inc_inflation["target"].mean()
+                sds = all_data_inc_inflation["target"].std()
+                counts = int(len(all_data_inc_inflation["target"]))
+                copcounts = int(sum(all_data_inc_inflation["COP"]==1))
+                copmean = all_data_inc_inflation.loc[all_data_inc_inflation["COP"]==1, "target"].mean()
+                copstd = all_data_inc_inflation.loc[
+                    all_data_inc_inflation["COP"] == 1, "target"].std()
+                background_results_df = pd.concat([
+                    background_results_df,
+                    pd.DataFrame({
+                        "Group": [filetype],
+                        "Variable": [target],
+                        "Normalisation": [yearnormstring],
+                        "Mean": [means],
+                        "Standard deviation": [sds],
+                        "Datapoints": [counts],
+                        "COP datapoints": [copcounts],
+                        "COP mean": [copmean],
+                        "COP std": [copstd],
+                        "Times": [timecounts],
+                    })
+                ])
+                background_results_df.to_csv(
+                    output + f"/BackgroundSummaryFEOLS{target}{yearnormstring}.csv"
+                )
 
+        print(f'Finished {filetype}')
